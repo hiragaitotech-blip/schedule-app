@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { createSupabaseServerClient } from "@/src/lib/supabaseClient";
+import { createSupabaseServerClient, createSupabaseAdminClient } from "@/src/lib/supabaseClient";
 import { getCurrentUserTenantId, verifyCaseAccess } from "@/src/lib/tenant";
-import type { CandidateAvailability, Slot } from "@/src/types/database";
+import type { CandidateAvailability, Slot, Case } from "@/src/types/database";
 import { CreateSlotForm } from "@/src/components/slots/CreateSlotForm";
 import { SlotList } from "@/src/components/slots/SlotList";
 import { CaseInsights } from "@/src/components/cases/CaseInsights";
+import { CopyButton } from "@/src/components/ui/CopyButton";
 
 type SlotWithResponses = Slot & {
   responses: CandidateAvailability[];
@@ -37,6 +38,23 @@ export default async function CaseDetailPage({
   if (!caseData) {
     notFound();
   }
+
+  // created_by のメールアドレスを取得
+  let creatorEmail: string | null = null;
+  if (caseData.created_by) {
+    try {
+      const adminClient = createSupabaseAdminClient();
+      const { data: authUser } = await adminClient.auth.admin.getUserById(caseData.created_by);
+      creatorEmail = authUser?.user?.email || null;
+    } catch (error) {
+      console.warn("作成者情報の取得に失敗しました:", error);
+    }
+  }
+
+  // 候補者用URLを生成（public_idを使用）
+  const candidateUrl = caseData.public_id
+    ? `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/c/${caseData.public_id}`
+    : null;
 
   // テナントアクセス権限を確認
   const hasAccess = await verifyCaseAccess(caseId, tenantId);
@@ -94,6 +112,11 @@ export default async function CaseDetailPage({
             候補者: {caseData?.candidate_name || "-"} / ステージ:{" "}
             {caseData?.stage || "-"} / ステータス: {caseData?.status || "-"}
           </p>
+          {creatorEmail && (
+            <p className="mt-1 text-xs text-slate-400">
+              担当者: {creatorEmail}
+            </p>
+          )}
         </div>
         <Link
           href="/dashboard"
@@ -102,6 +125,47 @@ export default async function CaseDetailPage({
           一覧に戻る
         </Link>
       </div>
+
+      {/* 候補者用URL表示 */}
+      {candidateUrl && (
+        <section className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-indigo-900 mb-2">
+            候補者用リンク
+          </h2>
+          <p className="text-sm text-indigo-700 mb-3">
+            このURLを候補者に送付してください。
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 rounded-lg bg-white px-4 py-2 font-mono text-sm text-indigo-900 break-all">
+              {candidateUrl}
+            </code>
+            <CopyButton text={candidateUrl} />
+          </div>
+        </section>
+      )}
+
+      {/* メール本文表示 */}
+      {caseData.raw_email_body && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900 mb-3">
+            メール本文
+          </h2>
+          <div className="rounded-lg bg-slate-50 p-4 max-h-96 overflow-y-auto">
+            <pre className="whitespace-pre-wrap text-sm text-slate-700 font-mono">
+              {caseData.raw_email_body}
+            </pre>
+          </div>
+        </section>
+      )}
+
+      {creatorEmail && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900 mb-2">
+            担当ユーザー
+          </h2>
+          <p className="text-sm text-slate-600">{creatorEmail}</p>
+        </section>
+      )}
 
       <CaseInsights
         caseId={caseData.id}

@@ -1,12 +1,16 @@
 export type Tenant = {
   id: string;
   name: string;
+  mailbox_address: string | null;
+  is_active: boolean;
   created_at: string;
 };
 
 export type TenantInsert = {
   id?: string;
   name: string;
+  mailbox_address?: string | null;
+  is_active?: boolean;
   created_at?: string;
 };
 
@@ -15,6 +19,8 @@ export type Profile = {
   tenant_id: string | null;
   role: string | null;
   is_active: boolean;
+  force_password_reset: boolean;
+  email: string | null;
   created_at: string;
 };
 
@@ -23,14 +29,19 @@ export type ProfileInsert = {
   tenant_id?: string | null;
   role?: string | null;
   is_active?: boolean;
+  force_password_reset?: boolean;
+  email?: string | null;
   created_at?: string;
 };
 
 export type Case = {
   id: string;
+  public_id: string | null;
   tenant_id: string | null;
+  created_by: string | null;
   title: string | null;
   candidate_name: string | null;
+  raw_email_body: string | null;
   stage: string | null;
   status: string | null;
   created_at: string;
@@ -38,9 +49,12 @@ export type Case = {
 
 export type CaseInsert = {
   id?: string;
+  public_id?: string | null;
   tenant_id?: string | null;
+  created_by?: string | null;
   title?: string | null;
   candidate_name?: string | null;
+  raw_email_body?: string | null;
   stage?: string | null;
   status?: string | null;
   created_at?: string;

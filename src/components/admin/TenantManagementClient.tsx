@@ -7,6 +7,8 @@ import { useToast } from "@/src/contexts/ToastContext";
 type Tenant = {
   id: string;
   name: string;
+  mailbox_address: string | null;
+  is_active: boolean;
   created_at: string;
   user_count: number;
   case_count: number;
@@ -49,6 +51,34 @@ export function TenantManagementClient() {
     }
   };
 
+  const handleToggleActive = async (tenantId: string, newStatus: boolean) => {
+    try {
+      const response = await fetch(`/api/admin/tenants/${tenantId}/toggle-active`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ is_active: newStatus }),
+      });
+
+      if (!response.ok) {
+        const { error: message } = await response.json();
+        throw new Error(message || "状態の更新に失敗しました");
+      }
+
+      showToast(
+        newStatus ? "テナントを有効化しました" : "テナントを無効化しました",
+        "success",
+      );
+      fetchTenants();
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "エラーが発生しました",
+        "error",
+      );
+    }
+  };
+
   const handleCreateTenant = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -82,8 +112,12 @@ export function TenantManagementClient() {
         throw new Error(message || "テナント作成に失敗しました");
       }
 
-      const { password } = await response.json();
+      const { password, tenant } = await response.json();
       setGeneratedPassword(password);
+      setGeneratedTenantInfo({
+        email: adminEmail.trim().toLowerCase(),
+        mailbox_address: tenant.mailbox_address || "-",
+      });
       setTenantName("");
       setAdminEmail("");
       setAdminPassword("");
@@ -109,32 +143,58 @@ export function TenantManagementClient() {
             テナント作成成功
           </h3>
           <p className="mt-2 text-sm text-indigo-700">
-            管理者の一時パスワードをコピーして、ユーザーに共有してください。
+            以下の情報をコピーして、ユーザーに共有してください。
           </p>
-          <div className="mt-4 flex items-center gap-2">
-            <code className="flex-1 rounded-lg bg-white px-4 py-3 font-mono text-sm font-semibold text-indigo-900">
-              {generatedPassword}
-            </code>
-            <button
-              type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(generatedPassword);
-                showToast("パスワードをコピーしました", "success");
-              }}
-              className="rounded-lg border border-indigo-300 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50"
-            >
-              コピー
-            </button>
-            <button
-              type="button"
-              onClick={() => setGeneratedPassword(null)}
-              className="rounded-lg border border-indigo-300 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50"
-            >
-              閉じる
-            </button>
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-indigo-800 mb-1">
+                管理者メールアドレス
+              </label>
+              <code className="block rounded-lg bg-white px-4 py-2 font-mono text-sm text-indigo-900">
+                {generatedTenantInfo?.email || "-"}
+              </code>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-indigo-800 mb-1">
+                仮パスワード
+              </label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-lg bg-white px-4 py-2 font-mono text-sm font-semibold text-indigo-900">
+                  {generatedPassword}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(generatedPassword);
+                    showToast("パスワードをコピーしました", "success");
+                  }}
+                  className="rounded-lg border border-indigo-300 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50"
+                >
+                  コピー
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-indigo-800 mb-1">
+                メール受信アドレス（mailbox_address）
+              </label>
+              <code className="block rounded-lg bg-white px-4 py-2 font-mono text-sm text-indigo-900">
+                {generatedTenantInfo?.mailbox_address || "-"}
+              </code>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              setGeneratedPassword(null);
+              setGeneratedTenantInfo(null);
+            }}
+            className="mt-4 w-full rounded-lg border border-indigo-300 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50"
+          >
+            閉じる
+          </button>
           <p className="mt-3 text-xs text-indigo-600">
-            ※ このパスワードは一度だけ表示されます。再取得はできません。
+            ※ この情報は一度だけ表示されます。再取得はできません。
           </p>
         </div>
       )}
@@ -245,9 +305,12 @@ export function TenantManagementClient() {
               <thead>
                 <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                   <th className="py-3 pr-4 font-medium">テナント名</th>
+                  <th className="py-3 pr-4 font-medium">メールアドレス</th>
+                  <th className="py-3 pr-4 font-medium">状態</th>
                   <th className="py-3 pr-4 font-medium">ユーザー数</th>
                   <th className="py-3 pr-4 font-medium">案件数</th>
                   <th className="py-3 pr-4 font-medium">作成日</th>
+                  <th className="py-3 font-medium">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -255,6 +318,22 @@ export function TenantManagementClient() {
                   <tr key={tenant.id} className="align-top">
                     <td className="py-4 pr-4 font-medium text-slate-900">
                       {tenant.name}
+                    </td>
+                    <td className="py-4 pr-4">
+                      <code className="text-xs text-slate-600">
+                        {tenant.mailbox_address || "-"}
+                      </code>
+                    </td>
+                    <td className="py-4 pr-4">
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                          tenant.is_active
+                            ? "bg-green-100 text-green-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {tenant.is_active ? "有効" : "無効"}
+                      </span>
                     </td>
                     <td className="py-4 pr-4">
                       <span className="rounded-full bg-indigo-100 px-2 py-1 text-xs font-semibold text-indigo-700">
@@ -272,6 +351,19 @@ export function TenantManagementClient() {
                         month: "short",
                         day: "numeric",
                       })}
+                    </td>
+                    <td className="py-4">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleActive(tenant.id, !tenant.is_active)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                          tenant.is_active
+                            ? "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                            : "border border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
+                        }`}
+                      >
+                        {tenant.is_active ? "無効化" : "有効化"}
+                      </button>
                     </td>
                   </tr>
                 ))}

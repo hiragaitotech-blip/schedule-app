@@ -10,6 +10,22 @@ function getSuperAdminEmail(): string | null {
 }
 
 /**
+ * ユーザーがsystemロールかどうかを判定
+ * @param userId ユーザーID
+ * @returns systemロールの場合 true
+ */
+export async function isSystemAdmin(userId: string): Promise<boolean> {
+  const supabase = createSupabaseServerClient();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
+  
+  return profile?.role === "system";
+}
+
+/**
  * 現在のユーザーがスーパー管理者かどうかを判定
  * @returns スーパー管理者の場合 true
  */

@@ -7,9 +7,13 @@ import type { Case } from "@/src/types/database";
 import { useToast } from "@/src/contexts/ToastContext";
 import { TableSkeleton } from "@/src/components/ui/LoadingSkeleton";
 
+type CaseWithCreator = Case & {
+  created_by_email?: string | null;
+};
+
 export default function DashboardPage() {
   const { showToast } = useToast();
-  const [cases, setCases] = useState<Case[]>([]);
+  const [cases, setCases] = useState<CaseWithCreator[]>([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [copiedCaseId, setCopiedCaseId] = useState<string | null>(null);
@@ -28,7 +32,7 @@ export default function DashboardPage() {
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("tenant_id")
+      .select("tenant_id, role")
       .eq("id", user.id)
       .single();
 
@@ -38,17 +42,48 @@ export default function DashboardPage() {
       return;
     }
 
-    // tenant_idでフィルタリング
-    const { data, error: fetchError } = await supabase
+    // ロールに応じてフィルタリング
+    let query = supabase
       .from("cases")
-      .select("id, tenant_id, title, candidate_name, stage, status, created_at")
-      .eq("tenant_id", profile.tenant_id)
-      .order("created_at", { ascending: false });
+      .select("id, public_id, tenant_id, title, candidate_name, stage, status, created_at, created_by")
+      .eq("tenant_id", profile.tenant_id);
+
+    // member の場合は created_by = 自分 のみ表示
+    if (profile.role === "member") {
+      query = query.eq("created_by", user.id);
+    }
+    // admin の場合は全案件表示（tenant_id のみフィルタ）
+
+    const { data, error: fetchError } = await query.order("created_at", { ascending: false });
 
     if (fetchError) {
       setListError(fetchError.message);
     } else {
-      setCases(data ?? []);
+      // created_by のメールアドレスを取得（オプション）
+      const casesWithCreator: CaseWithCreator[] = await Promise.all(
+        (data ?? []).map(async (caseItem) => {
+          if (!caseItem.created_by) {
+            return { ...caseItem, created_by_email: null };
+          }
+          
+          // created_by のメールアドレスを取得
+          try {
+            const { data: creatorProfile } = await supabase
+              .from("profiles")
+              .select("id")
+              .eq("id", caseItem.created_by)
+              .single();
+            
+            // auth.users からメールアドレスを取得（Admin API が必要）
+            // 簡易版: created_by のIDを表示
+            return { ...caseItem, created_by_email: caseItem.created_by.substring(0, 8) + "..." };
+          } catch {
+            return { ...caseItem, created_by_email: null };
+          }
+        }),
+      );
+      
+      setCases(casesWithCreator);
     }
 
     setLoading(false);
@@ -61,14 +96,16 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [fetchCases]);
 
-  const handleCopyLink = async (caseId: string) => {
+  const handleCopyLink = async (caseItem: CaseWithCreator) => {
     setCopiedCaseId(null);
     try {
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
-      const url = `${origin}/candidate/${caseId}`;
+      // public_idを使用（なければcase.idをフォールバック）
+      const publicId = (caseItem as any).public_id || caseItem.id;
+      const url = `${origin}/c/${publicId}`;
       await navigator.clipboard.writeText(url);
-      setCopiedCaseId(caseId);
+      setCopiedCaseId(caseItem.id);
       showToast("候補者URLをコピーしました", "success");
       setTimeout(() => setCopiedCaseId(null), 2000);
     } catch (error) {
@@ -156,10 +193,13 @@ export default function DashboardPage() {
                         day: "numeric",
                       })}
                     </td>
+                    <td className="py-4 pr-4 text-xs text-slate-500">
+                      {jobCase.created_by_email || "-"}
+                    </td>
                     <td className="py-4 pr-4">
                       <button
                         type="button"
-                        onClick={() => handleCopyLink(jobCase.id)}
+                        onClick={() => handleCopyLink(jobCase)}
                         className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 hover:border-indigo-300"
                       >
                         {copiedCaseId === jobCase.id

@@ -67,7 +67,66 @@ export default function LoginPage() {
       document.cookie = `sb-access-token=${data.session.access_token}; path=/; max-age=86400; SameSite=Lax`;
     }
 
-    router.push(redirectedFrom);
+    // ロールに応じた遷移先を決定
+    let redirectPath = redirectedFrom;
+    
+    if (data.session?.user?.id) {
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role, force_password_reset")
+          .eq("id", data.session.user.id)
+          .single();
+
+        if (profile) {
+          // パスワードリセットが必要な場合
+          if (profile.force_password_reset) {
+            redirectPath = "/reset-password";
+          } else {
+            // ロールに応じた遷移先
+            // スーパー管理者チェック（API経由）
+            try {
+              const adminCheckResponse = await fetch("/api/admin/check-super-admin");
+              if (adminCheckResponse.ok) {
+                const { isSuperAdmin: isAdmin } = await adminCheckResponse.json();
+                if (isAdmin) {
+                  redirectPath = "/admin/tenants";
+                } else if (profile.role === "admin") {
+                  redirectPath = "/dashboard";
+                } else if (profile.role === "member") {
+                  redirectPath = "/dashboard";
+                } else {
+                  redirectPath = "/dashboard";
+                }
+              } else {
+                // APIエラーの場合はロールベースで判定
+                if (profile.role === "admin") {
+                  redirectPath = "/dashboard";
+                } else if (profile.role === "member") {
+                  redirectPath = "/dashboard";
+                } else {
+                  redirectPath = "/dashboard";
+                }
+              }
+            } catch (error) {
+              // エラー時はロールベースで判定
+              if (profile.role === "admin") {
+                redirectPath = "/dashboard";
+              } else if (profile.role === "member") {
+                redirectPath = "/dashboard";
+              } else {
+                redirectPath = "/dashboard";
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.warn("プロフィール取得中にエラーが発生しましたが、ログインを続行します:", error);
+        // エラーが発生してもデフォルトの遷移先を使用
+      }
+    }
+
+    router.push(redirectPath);
     router.refresh();
   };
 

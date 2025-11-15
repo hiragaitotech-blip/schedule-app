@@ -22,7 +22,7 @@ export async function GET() {
     // テナント一覧を取得（統計情報含む）
     const { data: tenants, error: tenantsError } = await supabase
       .from("tenants")
-      .select("id, name, created_at")
+      .select("id, name, mailbox_address, is_active, created_at")
       .order("created_at", { ascending: false });
 
     if (tenantsError) {

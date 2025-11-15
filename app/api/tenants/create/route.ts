@@ -52,8 +52,14 @@ export async function POST(request: Request) {
     const adminClient = createSupabaseAdminClient();
 
     // 1. テナントを作成
+    // mailbox_address を生成（形式: tenant-{tenant_idの最初の8文字}@example.com）
+    // 実際の本番環境では、適切なドメインを使用してください
+    const mailboxAddress = `tenant-${Date.now().toString(36)}@example.com`;
+    
     const tenantInsert: TenantInsert = {
       name: tenant_name.trim(),
+      mailbox_address: mailboxAddress,
+      is_active: true,
     };
 
     const { data: tenantData, error: tenantError } = await supabase
